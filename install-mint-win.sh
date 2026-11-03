@@ -7,9 +7,9 @@
 
 set -euo pipefail
 
-# Couleurs pour l'affichage
+# Couleurs pour l'affichage (adaptées aux fonds sombres/noirs)
 GREEN='\033[0;32m'
-BLUE='\033[0;34m'
+CYAN='\033[1;36m'   # Remplace le bleu foncé pour une visibilité nette sur fond noir
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
@@ -23,7 +23,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 if ! command -v dialog >/dev/null 2>&1; then
-    echo -e "${BLUE}Installation du paquet prérequis 'dialog'...${NC}"
+    echo -e "${CYAN}Installation du paquet prérequis 'dialog'...${NC}"
     apt-get update -qq && apt-get install -y -qq dialog
 fi
 
@@ -90,9 +90,9 @@ clear
 
 USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
-echo -e "${BLUE}=====================================================================${NC}"
-echo -e "${BLUE}   Configuration de l'environnement pour l'utilisateur : $REAL_USER   ${NC}"
-echo -e "${BLUE}=====================================================================${NC}"
+echo -e "${CYAN}=====================================================================${NC}"
+echo -e "${CYAN}   Configuration de l'environnement pour l'utilisateur : $REAL_USER   ${NC}"
+echo -e "${CYAN}=====================================================================${NC}"
 
 commande_existe() {
     command -v "$1" >/dev/null 2>&1
@@ -101,7 +101,7 @@ commande_existe() {
 # ------------------------------------------------------------------------------
 # 4. Mise à jour des paquets et dépendances requises
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[1/4] Vérification des outils système requis...${NC}"
+echo -e "\n${CYAN}[1/4] Vérification des outils système requis...${NC}"
 apt update -qq
 
 paquets_requis=(curl git wget tar gpg ca-certificates sassc libglib2.0-dev-bin libxml2-utils)
@@ -120,18 +120,17 @@ else
     echo -e "${GREEN}Tous les outils de base requis sont déjà présents.${NC}"
 fi
 
-# Préparation du dossier de clés APT
 install -m 0755 -d /etc/apt/keyrings
 
 # ------------------------------------------------------------------------------
 # 5. Installation de SoftMaker FreeOffice 2024
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[2/4] Vérification de SoftMaker FreeOffice...${NC}"
+echo -e "\n${CYAN}[2/4] Vérification de SoftMaker FreeOffice...${NC}"
 
 if commande_existe textmaker24 || commande_existe textmaker2024 || dpkg -s softmaker-freeoffice-2024 >/dev/null 2>&1; then
     echo -e "${GREEN}SoftMaker FreeOffice 2024 est déjà installé. Étape ignorée.${NC}"
 else
-    echo -e "Installation de FreeOffice via le script d'installation officiel SoftMaker..."
+    echo -e "Installation de FreeOffice via le script officiel SoftMaker..."
     curl -fsSL https://softmaker.net/down/install-softmaker-freeoffice-2024.sh | bash
     echo -e "${GREEN}FreeOffice 2024 installé avec succès.${NC}"
 fi
@@ -139,7 +138,7 @@ fi
 # ------------------------------------------------------------------------------
 # 6. Installation de Master PDF Editor
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[3/4] Vérification de Master PDF Editor...${NC}"
+echo -e "\n${CYAN}[3/4] Vérification de Master PDF Editor...${NC}"
 
 if commande_existe masterpdfeditor5 || dpkg -s master-pdf-editor-5 >/dev/null 2>&1 || dpkg -s master-pdf-editor >/dev/null 2>&1; then
     echo -e "${GREEN}Master PDF Editor est déjà installé. Étape ignorée.${NC}"
@@ -156,7 +155,7 @@ fi
 # ------------------------------------------------------------------------------
 # 7. Installation des thèmes visuels Windows 11 (Fluent)
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[4/4] Vérification des thèmes et icônes style Windows 11...${NC}"
+echo -e "\n${CYAN}[4/4] Vérification des thèmes et icônes style Windows 11...${NC}"
 
 sudo -u "$REAL_USER" mkdir -p "$USER_HOME/.themes" "$USER_HOME/.icons"
 
