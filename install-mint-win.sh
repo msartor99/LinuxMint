@@ -5,39 +5,108 @@
 # Objectif : Installer FreeOffice, Master PDF Editor et le pack visuel Windows 11
 # ==============================================================================
 
+set -euo pipefail
+
 # Couleurs pour l'affichage
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # Pas de couleur
+NC='\033[0m'
 
-echo -e "${BLUE}=====================================================================${NC}"
-echo -e "${BLUE}   Vérification et configuration de l'environnement Windows 11       ${NC}"
-echo -e "${BLUE}=====================================================================${NC}"
-
-# 1. Validation des droits administratifs
+# ------------------------------------------------------------------------------
+# 1. Validation des privilÃ¨ges et prÃ©requis d'affichage
+# ------------------------------------------------------------------------------
 if [ "$EUID" -ne 0 ]; then
-  echo -e "${RED}Erreur : Veuillez exécuter ce script avec sudo : sudo bash $0${NC}"
+  echo -e "${RED}Erreur : Veuillez exÃ©cuter ce script avec sudo : sudo bash $0${NC}"
   exit 1
 fi
 
-# Récupération de l'utilisateur réel
-REAL_USER=${SUDO_USER:-$USER}
+# Installation immÃ©diate de dialog si absent pour afficher l'interface
+if ! command -v dialog >/dev/null 2>&1; then
+    echo -e "${BLUE}Installation du paquet prÃ©requis 'dialog'...${NC}"
+    apt-get update -qq && apt-get install -y -qq dialog
+fi
+
+# ------------------------------------------------------------------------------
+# 2. Page d'avertissement et dÃ©charge de responsabilitÃ© (Disclaimer)
+# ------------------------------------------------------------------------------
+DISCLAIMER_TEXT="
+AVERTISSEMENT ET DÃ‰CHARGE DE RESPONSABILITÃ‰
+
+Ce script apporte des modifications importantes Ã  votre environnement :
+- Ajout de dÃ©pÃ´ts logiciels tiers (SoftMaker FreeOffice)
+- TÃ©lÃ©chargement et installation de paquets .deb (Master PDF Editor)
+- Modification des thÃ¨mes systÃ¨me et icÃ´nes utilisateur
+
+CE SCRIPT EST FOURNI Â« EN L'Ã‰TAT Â», SANS AUCUNE GARANTIE EXPRESSE
+OU IMPLICITE. L'AUTEUR DÃ‰CLINE TOUTE RESPONSABILITÃ‰ EN CAS DE
+DYSFONCTIONNEMENT, INSTABILITÃ‰ DU SYSTÃˆME OU PERTE DE DONNÃ‰ES.
+
+L'exÃ©cution de ce script se fait sous votre entiÃ¨re responsabilitÃ©.
+
+Acceptez-vous ces conditions et souhaitez-vous poursuivre ?"
+
+if ! dialog --clear \
+    --backtitle "Personnalisation Linux Mint - Style Windows 11" \
+    --title " CLAUSE DE NON-RESPONSABILITÃ‰ " \
+    --yes-label "Accepter" \
+    --no-label "Refuser" \
+    --yesno "$DISCLAIMER_TEXT" 18 72; then
+    clear
+    echo -e "${YELLOW}ProcÃ©dure interrompue : conditions de non-responsabilitÃ© refusÃ©es.${NC}"
+    exit 0
+fi
+
+# ------------------------------------------------------------------------------
+# 3. SÃ©lection de l'utilisateur cible
+# ------------------------------------------------------------------------------
+DEFAULT_USER="${SUDO_USER:-$USER}"
+
+EXEC_DIALOG_USER() {
+    dialog --clear \
+        --backtitle "Personnalisation Linux Mint - Style Windows 11" \
+        --title " Utilisateur cible " \
+        --inputbox "\nIndiquez le nom d'utilisateur pour lequel installer les thÃ¨mes :" 10 65 "$DEFAULT_USER" \
+        2>&1 >/dev/tty
+}
+
+REAL_USER=$(EXEC_DIALOG_USER) || {
+    clear
+    echo -e "${YELLOW}Installation annulÃ©e par l'utilisateur.${NC}"
+    exit 0
+}
+
+# Validation de l'existence du compte utilisateur
+while ! id "$REAL_USER" >/dev/null 2>&1 || [ -z "$REAL_USER" ]; do
+    dialog --backtitle "Personnalisation Linux Mint" \
+           --msgbox "Erreur : Le compte '$REAL_USER' n'existe pas sur ce systÃ¨me. Veuillez rÃ©essayer." 8 60
+    REAL_USER=$(EXEC_DIALOG_USER) || {
+        clear
+        echo -e "${YELLOW}Installation annulÃ©e par l'utilisateur.${NC}"
+        exit 0
+    }
+done
+
+clear
+
 USER_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
-# Fonction utilitaire pour vérifier si une commande existe
+echo -e "${BLUE}=====================================================================${NC}"
+echo -e "${BLUE}   Configuration de l'environnement pour l'utilisateur : $REAL_USER   ${NC}"
+echo -e "${BLUE}=====================================================================${NC}"
+
 commande_existe() {
     command -v "$1" >/dev/null 2>&1
 }
 
 # ------------------------------------------------------------------------------
-# 2. Mise à jour des paquets et installation des prérequis
+# 4. Mise Ã  jour des paquets et dÃ©pendances requises
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[1/4] Vérification des outils système requis...${NC}"
+echo -e "\n${BLUE}[1/4] VÃ©rification des outils systÃ¨me requis...${NC}"
 apt update -qq
 
-paquets_requis=(curl git wget tar)
+paquets_requis=(curl git wget tar gpg sassc libglib2.0-dev-bin libxml2-utils)
 pour_installer=()
 
 for paquet in "${paquets_requis[@]}"; do
@@ -50,85 +119,89 @@ if [ ${#pour_installer[@]} -ne 0 ]; then
     echo -e "Installation des outils manquants : ${pour_installer[*]}"
     apt install -y "${pour_installer[@]}"
 else
-    echo -e "${GREEN}Tous les outils de base requis sont déjà présents.${NC}"
+    echo -e "${GREEN}Tous les outils de base requis sont dÃ©jÃ  prÃ©sents.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Installation de SoftMaker FreeOffice 2024
+# 5. Installation de SoftMaker FreeOffice 2024
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[2/4] Vérification de SoftMaker FreeOffice...${NC}"
+echo -e "\n${BLUE}[2/4] VÃ©rification de SoftMaker FreeOffice...${NC}"
 
 if commande_existe textmaker2024 || dpkg -s softmaker-freeoffice-2024 >/dev/null 2>&1; then
-    echo -e "${GREEN}SoftMaker FreeOffice 2024 est déjà installé. Étape ignorée.${NC}"
+    echo -e "${GREEN}SoftMaker FreeOffice 2024 est dÃ©jÃ  installÃ©. Ã‰tape ignorÃ©e.${NC}"
 else
-    echo -e "Téléchargement et installation de FreeOffice..."
-    curl -fsSL https://softmaker.net | bash
+    echo -e "Configuration du dÃ©pÃ´t officiel SoftMaker..."
+    install -m 0755 -d /etc/apt/keyrings
+    wget -qO- https://shop.softmaker.com/repo/linux-repo-public.key | gpg --dearmor --yes -o /etc/apt/keyrings/softmaker.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/softmaker.gpg] https://shop.softmaker.com/repo/apt stable non-free" > /etc/apt/sources.list.d/softmaker.list
+    
+    apt update -qq
+    apt install -y softmaker-freeoffice-2024
+    echo -e "${GREEN}FreeOffice 2024 installÃ© avec succÃ¨s.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Installation de Master PDF Editor
+# 6. Installation de Master PDF Editor
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[3/4] Vérification de Master PDF Editor...${NC}"
+echo -e "\n${BLUE}[3/4] VÃ©rification de Master PDF Editor...${NC}"
 
-if commande_existe masterpdfeditor4 || commande_existe masterpdfeditor5 || dpkg -s masterpdfeditor >/dev/null 2>&1; then
-    echo -e "${GREEN}Master PDF Editor est déjà installé. Étape ignorée.${NC}"
+if commande_existe masterpdfeditor5 || dpkg -s master-pdf-editor >/dev/null 2>&1; then
+    echo -e "${GREEN}Master PDF Editor est dÃ©jÃ  installÃ©. Ã‰tape ignorÃ©e.${NC}"
 else
-    echo -e "Téléchargement de Master PDF Editor..."
-    # Récupération sécurisée du paquet .deb officiel (URL générique de redirection SoftMaker/CodeIndustry)
-    wget -q --show-progress -O /tmp/master-pdf-editor.deb "https://code-industry.net"
+    echo -e "TÃ©lÃ©chargement de Master PDF Editor 5..."
+    MASTER_PDF_URL="https://code-industry.net/public/master-pdf-editor-5.9.86-qt5.x86_64.deb"
     
-    if [ -f /tmp/master-pdf-editor.deb ]; then
+    wget -q --show-progress -O /tmp/master-pdf-editor.deb "$MASTER_PDF_URL"
+    
+    if [ -s /tmp/master-pdf-editor.deb ]; then
         echo -e "Installation du paquet..."
         apt install -y /tmp/master-pdf-editor.deb
         rm -f /tmp/master-pdf-editor.deb
+        echo -e "${GREEN}Master PDF Editor installÃ© avec succÃ¨s.${NC}"
     else
-        echo -e "${RED}Erreur : Impossible de télécharger Master PDF Editor.${NC}"
+        echo -e "${RED}Erreur : Ã‰chec du tÃ©lÃ©chargement du paquet Master PDF Editor.${NC}"
+        rm -f /tmp/master-pdf-editor.deb
     fi
 fi
 
 # ------------------------------------------------------------------------------
-# 5. Installation des thèmes visuels Windows 11 (Fluent)
+# 7. Installation des thÃ¨mes visuels Windows 11 (Fluent)
 # ------------------------------------------------------------------------------
-echo -e "\n${BLUE}[4/4] Vérification des thèmes et icônes style Windows 11...${NC}"
+echo -e "\n${BLUE}[4/4] VÃ©rification des thÃ¨mes et icÃ´nes style Windows 11...${NC}"
 
-# Création sécurisée des dossiers thèmes s'ils n'existent pas
-mkdir -p "$USER_HOME/.themes"
-mkdir -p "$USER_HOME/.icons"
+sudo -u "$REAL_USER" mkdir -p "$USER_HOME/.themes" "$USER_HOME/.icons"
 
-# --- THÈME GENTIL / FLUENT ---
+# --- THÃˆME GTK FLUENT ---
 if [ -d "$USER_HOME/.themes/Fluent-dark" ] || [ -d "$USER_HOME/.themes/Fluent" ]; then
-    echo -e "${GREEN}Les thèmes d'interface Fluent sont déjà présents dans ~/.themes. Étape ignorée.${NC}"
+    echo -e "${GREEN}Les thÃ¨mes d'interface Fluent sont dÃ©jÃ  prÃ©sents. Ã‰tape ignorÃ©e.${NC}"
 else
-    echo -e "Téléchargement et déploiement du thème de fenêtres Fluent-GTK..."
-    rm -rf /tmp/Fluent-gtk-theme # Nettoyage préventif
-    git clone -q https://github.com /tmp/Fluent-gtk-theme
+    echo -e "TÃ©lÃ©chargement et compilation du thÃ¨me Fluent-GTK..."
+    rm -rf /tmp/Fluent-gtk-theme
+    git clone -q --depth=1 https://github.com/vinceliuice/Fluent-gtk-theme.git /tmp/Fluent-gtk-theme
+    
     if [ -f /tmp/Fluent-gtk-theme/install.sh ]; then
-        # Exécution du script de l'auteur directement vers le dossier de l'utilisateur
-        bash /tmp/Fluent-gtk-theme/install.sh --dest "$USER_HOME/.themes" --theme default --blur
+        sudo -u "$REAL_USER" bash /tmp/Fluent-gtk-theme/install.sh --dest "$USER_HOME/.themes" --theme default --blur
     fi
     rm -rf /tmp/Fluent-gtk-theme
 fi
 
-# --- PACK D'ICÔNES ---
+# --- PACK D'ICÃ”NES FLUENT ---
 if [ -d "$USER_HOME/.icons/Fluent" ] || [ -d "$USER_HOME/.icons/Fluent-dark" ]; then
-    echo -e "${GREEN}Le pack d'icônes Fluent est déjà présent dans ~/.icons. Étape ignorée.${NC}"
+    echo -e "${GREEN}Le pack d'icÃ´nes Fluent est dÃ©jÃ  prÃ©sent. Ã‰tape ignorÃ©e.${NC}"
 else
-    echo -e "Téléchargement et déploiement des icônes style Windows 11..."
-    rm -rf /tmp/Fluent-icon-theme # Nettoyage préventif
-    git clone -q https://github.com /tmp/Fluent-icon-theme
+    echo -e "TÃ©lÃ©chargement et installation des icÃ´nes Fluent..."
+    rm -rf /tmp/Fluent-icon-theme
+    git clone -q --depth=1 https://github.com/vinceliuice/Fluent-icon-theme.git /tmp/Fluent-icon-theme
+    
     if [ -f /tmp/Fluent-icon-theme/install.sh ]; then
-        bash /tmp/Fluent-icon-theme/install.sh --dest "$USER_HOME/.icons"
+        sudo -u "$REAL_USER" bash /tmp/Fluent-icon-theme/install.sh --dest "$USER_HOME/.icons"
     fi
     rm -rf /tmp/Fluent-icon-theme
 fi
 
-# Rétablir proprement la propriété des dossiers à l'utilisateur non-root
+# RÃ©tablissement des droits complets
 chown -R "$REAL_USER":"$REAL_USER" "$USER_HOME/.themes" "$USER_HOME/.icons"
 
-# ------------------------------------------------------------------------------
-# Fin du script
-# ------------------------------------------------------------------------------
 echo -e "\n${GREEN}=====================================================================${NC}"
-echo -e "${GREEN} Statut du système : À jour et configuré !                            ${NC}"
+echo -e "${GREEN} Configuration terminÃ©e avec succÃ¨s pour $REAL_USER !               ${NC}"
 echo -e "${GREEN}=====================================================================${NC}"
-echo -e "Vous pouvez relancer ce script à tout moment pour vérifier votre installation."
