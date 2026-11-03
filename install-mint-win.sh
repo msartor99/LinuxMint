@@ -22,7 +22,6 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Installation immédiate de dialog si absent pour afficher l'interface
 if ! command -v dialog >/dev/null 2>&1; then
     echo -e "${BLUE}Installation du paquet prérequis 'dialog'...${NC}"
     apt-get update -qq && apt-get install -y -qq dialog
@@ -35,9 +34,9 @@ DISCLAIMER_TEXT="
 AVERTISSEMENT ET DÉCHARGE DE RESPONSABILITÉ
 
 Ce script apporte des modifications importantes à votre environnement :
-- Ajout de dépôts logiciels tiers (SoftMaker FreeOffice)
-- Téléchargement et installation de paquets .deb (Master PDF Editor)
-- Modification des thèmes système et icônes utilisateur
+- Ajout des dépôts logiciels tiers officiels (SoftMaker et Code Industry)
+- Téléchargement et installation de FreeOffice 2024 et Master PDF Editor
+- Modification et installation des thèmes système et icônes utilisateur
 
 CE SCRIPT EST FOURNI « EN L'ÉTAT », SANS AUCUNE GARANTIE EXPRESSE
 OU IMPLICITE. L'AUTEUR DÉCLINE TOUTE RESPONSABILITÉ EN CAS DE
@@ -77,7 +76,6 @@ REAL_USER=$(EXEC_DIALOG_USER) || {
     exit 0
 }
 
-# Validation de l'existence du compte utilisateur
 while ! id "$REAL_USER" >/dev/null 2>&1 || [ -z "$REAL_USER" ]; do
     dialog --backtitle "Personnalisation Linux Mint" \
            --msgbox "Erreur : Le compte '$REAL_USER' n'existe pas sur ce système. Veuillez réessayer." 8 60
@@ -106,7 +104,7 @@ commande_existe() {
 echo -e "\n${BLUE}[1/4] Vérification des outils système requis...${NC}"
 apt update -qq
 
-paquets_requis=(curl git wget tar gpg sassc libglib2.0-dev-bin libxml2-utils)
+paquets_requis=(curl git wget tar gpg ca-certificates sassc libglib2.0-dev-bin libxml2-utils)
 pour_installer=()
 
 for paquet in "${paquets_requis[@]}"; do
@@ -122,21 +120,19 @@ else
     echo -e "${GREEN}Tous les outils de base requis sont déjà présents.${NC}"
 fi
 
+# Préparation du dossier de clés APT
+install -m 0755 -d /etc/apt/keyrings
+
 # ------------------------------------------------------------------------------
 # 5. Installation de SoftMaker FreeOffice 2024
 # ------------------------------------------------------------------------------
 echo -e "\n${BLUE}[2/4] Vérification de SoftMaker FreeOffice...${NC}"
 
-if commande_existe textmaker2024 || dpkg -s softmaker-freeoffice-2024 >/dev/null 2>&1; then
+if commande_existe textmaker24 || commande_existe textmaker2024 || dpkg -s softmaker-freeoffice-2024 >/dev/null 2>&1; then
     echo -e "${GREEN}SoftMaker FreeOffice 2024 est déjà installé. Étape ignorée.${NC}"
 else
-    echo -e "Configuration du dépôt officiel SoftMaker..."
-    install -m 0755 -d /etc/apt/keyrings
-    wget -qO- https://shop.softmaker.com/repo/linux-repo-public.key | gpg --dearmor --yes -o /etc/apt/keyrings/softmaker.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/softmaker.gpg] https://shop.softmaker.com/repo/apt stable non-free" > /etc/apt/sources.list.d/softmaker.list
-    
-    apt update -qq
-    apt install -y softmaker-freeoffice-2024
+    echo -e "Installation de FreeOffice via le script d'installation officiel SoftMaker..."
+    curl -fsSL https://softmaker.net/down/install-softmaker-freeoffice-2024.sh | bash
     echo -e "${GREEN}FreeOffice 2024 installé avec succès.${NC}"
 fi
 
@@ -145,23 +141,16 @@ fi
 # ------------------------------------------------------------------------------
 echo -e "\n${BLUE}[3/4] Vérification de Master PDF Editor...${NC}"
 
-if commande_existe masterpdfeditor5 || dpkg -s master-pdf-editor >/dev/null 2>&1; then
+if commande_existe masterpdfeditor5 || dpkg -s master-pdf-editor-5 >/dev/null 2>&1 || dpkg -s master-pdf-editor >/dev/null 2>&1; then
     echo -e "${GREEN}Master PDF Editor est déjà installé. Étape ignorée.${NC}"
 else
-    echo -e "Téléchargement de Master PDF Editor 5..."
-    MASTER_PDF_URL="https://code-industry.net/public/master-pdf-editor-5.9.86-qt5.x86_64.deb"
+    echo -e "Configuration du dépôt officiel Master PDF Editor..."
+    curl -fsSL http://repo.code-industry.net/deb/pubmpekey.asc | gpg --dearmor --yes -o /etc/apt/keyrings/masterpdfeditor.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/masterpdfeditor.gpg] http://repo.code-industry.net/deb stable main" > /etc/apt/sources.list.d/master-pdf-editor.list
     
-    wget -q --show-progress -O /tmp/master-pdf-editor.deb "$MASTER_PDF_URL"
-    
-    if [ -s /tmp/master-pdf-editor.deb ]; then
-        echo -e "Installation du paquet..."
-        apt install -y /tmp/master-pdf-editor.deb
-        rm -f /tmp/master-pdf-editor.deb
-        echo -e "${GREEN}Master PDF Editor installé avec succès.${NC}"
-    else
-        echo -e "${RED}Erreur : Échec du téléchargement du paquet Master PDF Editor.${NC}"
-        rm -f /tmp/master-pdf-editor.deb
-    fi
+    apt update -qq
+    apt install -y master-pdf-editor-5
+    echo -e "${GREEN}Master PDF Editor installé avec succès.${NC}"
 fi
 
 # ------------------------------------------------------------------------------
@@ -199,7 +188,6 @@ else
     rm -rf /tmp/Fluent-icon-theme
 fi
 
-# Rétablissement des droits complets
 chown -R "$REAL_USER":"$REAL_USER" "$USER_HOME/.themes" "$USER_HOME/.icons"
 
 echo -e "\n${GREEN}=====================================================================${NC}"
